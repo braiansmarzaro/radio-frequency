@@ -1,0 +1,8 @@
+Trabalho de radio frequencia
+# Detalhes
+- Só precisa fazer um dos PSK
+- Pode trocar os moduladores obrigatorios pelos extras (trocar QAM por espectral, por exemplo)
+
+# Descrição de memoria
+Fazer um modulador virtual, em python ou matlab
+Calcular bandas para todas as tarefas, transmitindo vídeo, imagem e texto em determinadas taxas
