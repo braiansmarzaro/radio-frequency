@@ -46,7 +46,10 @@ class Transmission:
             'total_bits': 0,
             'error_bits': 0,
             'total_symbols': 0,
-            'error_symbols': 0
+            'error_symbols': 0,
+            'transmission_time': None,  # Tempo de transmissão em segundos
+            'bandwidth_used': None,     # Largura de banda utilizada em Hz
+            'signal_duration': None     # Duração do sinal em segundos
         }
         
     def transmit_bits(self, bits: np.ndarray, calculate_metrics: bool = True) -> Tuple[np.ndarray, np.ndarray]:
@@ -62,6 +65,21 @@ class Transmission:
         """
         # 1. Modulação
         tx_signal = self.transmitter.modulate(bits)
+        
+        # Calcula tempo de transmissão e largura de banda
+        signal_duration = len(tx_signal) / self.transmitter.sample_rate
+        
+        # Largura de banda utilizada (aproximação pela taxa de símbolos)
+        if hasattr(self.transmitter, 'symbol_rate'):
+            bandwidth_used = self.transmitter.symbol_rate
+        else:
+            # Fallback: usa taxa de amostragem como referência
+            bandwidth_used = self.transmitter.sample_rate / self.transmitter.samples_per_symbol
+        
+        # Atualiza métricas
+        self.metrics['signal_duration'] = signal_duration
+        self.metrics['bandwidth_used'] = bandwidth_used
+        self.metrics['transmission_time'] = signal_duration
         
         # 2. Transmissão pelo canal
         rx_signal = self.channel.transmit(tx_signal)
@@ -276,7 +294,10 @@ class Transmission:
             'total_bits': 0,
             'error_bits': 0,
             'total_symbols': 0,
-            'error_symbols': 0
+            'error_symbols': 0,
+            'transmission_time': None,
+            'bandwidth_used': None,
+            'signal_duration': None
         }
     
     def get_system_info(self) -> str:
@@ -305,7 +326,7 @@ class Transmission:
         info += f"\nReceptor: {self.receiver.get_modulation_type()}\n"
         
         if self.metrics['ber'] is not None:
-            info += f"\n=== Métricas ===\n"
+            info += "\n=== Métricas ===\n"
             info += f"BER: {self.metrics['ber']:.2e}\n"
             
             if self.metrics['snr_db'] is not None:
@@ -313,6 +334,12 @@ class Transmission:
             
             if self.metrics['throughput'] is not None:
                 info += f"Throughput: {self.metrics['throughput']/1e3:.2f} kbps\n"
+            
+            if self.metrics['transmission_time'] is not None:
+                info += f"Tempo de Transmissão: {self.metrics['transmission_time']:.3f} s\n"
+            
+            if self.metrics['bandwidth_used'] is not None:
+                info += f"Largura de Banda: {self.metrics['bandwidth_used']/1e3:.2f} kHz\n"
         
         return info
     
