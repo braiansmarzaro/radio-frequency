@@ -4,7 +4,6 @@ Demodula sinais 4-ASK recuperando 2 bits por símbolo.
 """
 import numpy as np
 from .base_receiver import BaseReceiver
-from typing import Optional
 
 
 class ASK4Receiver(BaseReceiver):

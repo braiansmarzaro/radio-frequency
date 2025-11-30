@@ -4,7 +4,6 @@ Adiciona ruído branco Gaussiano ao sinal transmitido.
 """
 import numpy as np
 from .base_channel import BaseChannel
-from typing import Optional
 
 
 class AWGNChannel(BaseChannel):
@@ -17,7 +16,7 @@ class AWGNChannel(BaseChannel):
     SNR (Signal-to-Noise Ratio) pode ser especificado em dB ou linear.
     """
     
-    def __init__(self, snr_db: float = 10.0, noise_power: Optional[float] = None):
+    def __init__(self, snr_db: float = 10.0, noise_power: float|None = None):
         """
         Inicializa o canal AWGN.
         

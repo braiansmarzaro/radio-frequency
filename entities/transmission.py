@@ -52,6 +52,10 @@ class Transmission:
             'signal_duration': None     # Duração do sinal em segundos
         }
         
+        # Armazena sinais transmitidos/recebidos para análise posterior
+        self.tx_signal = None
+        self.rx_signal = None
+        
     def transmit_bits(self, bits: np.ndarray, calculate_metrics: bool = True) -> Tuple[np.ndarray, np.ndarray]:
         """
         Transmite bits através do sistema completo.
@@ -65,6 +69,9 @@ class Transmission:
         """
         # 1. Modulação
         tx_signal = self.transmitter.modulate(bits)
+        
+        # Armazena sinal transmitido
+        self.tx_signal = tx_signal
         
         # Calcula tempo de transmissão e largura de banda
         signal_duration = len(tx_signal) / self.transmitter.sample_rate
@@ -83,6 +90,9 @@ class Transmission:
         
         # 2. Transmissão pelo canal
         rx_signal = self.channel.transmit(tx_signal)
+        
+        # Armazena sinal recebido
+        self.rx_signal = rx_signal
         
         # 3. Demodulação
         rx_bits = self.receiver.demodulate(rx_signal)
