@@ -54,8 +54,8 @@ class OFDMTransmitter:
         # Ajusta para potência de 2 (FFT eficiente)
         self.N_fft = 2 ** int(np.ceil(np.log2(self.N_subcarriers)))
         
-        # Bits por símbolo OFDM (usando QPSK = 2 bits/subportadora)
-        self.bits_per_symbol = 2  # QPSK
+        # Bits por símbolo OFDM (usando 16-QAM = 4 bits/subportadora)
+        self.bits_per_symbol = 4  # 16-QAM
         self.bits_per_ofdm = self.N_fft * self.bits_per_symbol
         
         # Taxa efetiva de símbolos OFDM
@@ -74,7 +74,7 @@ class OFDMTransmitter:
         print(f"Tempo de símbolo (Ts):             {self.Ts*1e6:.2f} µs ({self.symbol_time_multiplier}×Tg)")
         print(f"Tempo útil (Tu):                   {self.Tu*1e6:.2f} µs")
         print(f"Número de subportadoras (FFT):     {self.N_fft}")
-        print(f"Modulação:                         QPSK ({self.bits_per_symbol} bits/subportadora)")
+        print(f"Modulação:                         16-QAM ({self.bits_per_symbol} bits/subportadora)")
         print(f"Bits por símbolo OFDM:             {self.bits_per_ofdm}")
         print(f"Taxa de símbolos OFDM:             {self.symbol_rate/1e3:.2f} kSymbols/s")
         print(f"Taxa de bits efetiva:              {self.effective_bitrate/1e6:.2f} Mbps")
@@ -86,32 +86,84 @@ class OFDMTransmitter:
             print(f"Modo:                              Banda Base")
         print("=" * 70)
         
-    def qpsk_modulate(self, bits: np.ndarray) -> np.ndarray:
+    def qam16_modulate(self, bits: np.ndarray) -> np.ndarray:
         """
-        Modulação QPSK
-        00 -> -1-1j, 01 -> -1+1j, 10 -> 1-1j, 11 -> 1+1j
+        Modulação 16-QAM com Gray coding
+        4 bits -> 1 símbolo complexo
+        Constelação: 4x4 grid normalizada
         """
-        # Agrupa bits em pares
-        bits = bits.reshape(-1, 2)
+        # Agrupa bits em grupos de 4
+        bits = bits.reshape(-1, 4)
         
-        # Mapeia para símbolos QPSK
+        # Mapeamento Gray-coded 16-QAM
+        # Níveis I e Q: -3, -1, +1, +3
+        gray_map = [
+            0b0000, 0b0001, 0b0011, 0b0010,  # I=-3
+            0b0100, 0b0101, 0b0111, 0b0110,  # I=-1
+            0b1100, 0b1101, 0b1111, 0b1110,  # I=+1
+            0b1000, 0b1001, 0b1011, 0b1010   # I=+3
+        ]
+        
+        # Gera constelação
+        levels = np.array([-3, -1, 1, 3])
+        constellation = np.zeros(16, dtype=complex)
+        
+        idx = 0
+        for i in range(4):
+            for q in range(4):
+                gray_idx = gray_map[idx]
+                constellation[gray_idx] = levels[q] + 1j * levels[3-i]
+                idx += 1
+        
+        # Normaliza potência média para 1
+        avg_power = np.mean(np.abs(constellation)**2)
+        constellation = constellation / np.sqrt(avg_power)
+        
+        # Mapeia bits para símbolos
         symbols = np.zeros(len(bits), dtype=complex)
-        symbols = (2*bits[:, 0] - 1) + 1j*(2*bits[:, 1] - 1)
-        
-        # Normalização
-        symbols = symbols / np.sqrt(2)
+        for i in range(len(bits)):
+            # Converte 4 bits para índice
+            symbol_idx = 0
+            for j in range(4):
+                symbol_idx |= (bits[i, j] << (3 - j))
+            symbols[i] = constellation[symbol_idx]
         
         return symbols
     
-    def qpsk_demodulate(self, symbols: np.ndarray) -> np.ndarray:
-        """Demodulação QPSK"""
-        bits = np.zeros(len(symbols) * 2, dtype=int)
+    def qam16_demodulate(self, symbols: np.ndarray) -> np.ndarray:
+        """Demodulação 16-QAM por mínima distância"""
+        # Gera constelação de referência (mesma do modulador)
+        gray_map = [
+            0b0000, 0b0001, 0b0011, 0b0010,
+            0b0100, 0b0101, 0b0111, 0b0110,
+            0b1100, 0b1101, 0b1111, 0b1110,
+            0b1000, 0b1001, 0b1011, 0b1010
+        ]
         
-        # Recupera bits da parte real
-        bits[0::2] = (np.real(symbols) > 0).astype(int)
+        levels = np.array([-3, -1, 1, 3])
+        constellation = np.zeros(16, dtype=complex)
         
-        # Recupera bits da parte imaginária
-        bits[1::2] = (np.imag(symbols) > 0).astype(int)
+        idx = 0
+        for i in range(4):
+            for q in range(4):
+                gray_idx = gray_map[idx]
+                constellation[gray_idx] = levels[q] + 1j * levels[3-i]
+                idx += 1
+        
+        avg_power = np.mean(np.abs(constellation)**2)
+        constellation = constellation / np.sqrt(avg_power)
+        
+        # Demodula por mínima distância
+        bits = np.zeros(len(symbols) * 4, dtype=int)
+        
+        for i, symbol in enumerate(symbols):
+            # Encontra símbolo mais próximo
+            distances = np.abs(constellation - symbol)
+            closest_idx = np.argmin(distances)
+            
+            # Converte índice para 4 bits
+            for j in range(4):
+                bits[i*4 + j] = (closest_idx >> (3 - j)) & 1
         
         return bits
     
@@ -233,11 +285,11 @@ class OFDMTransmitter:
             end_idx = start_idx + self.bits_per_ofdm
             symbol_bits = tx_bits[start_idx:end_idx]
             
-            # Modula em QPSK
-            qpsk_symbols = self.qpsk_modulate(symbol_bits)
+            # Modula em 16-QAM
+            qam16_symbols = self.qam16_modulate(symbol_bits)
             
             # IFFT (converte frequência -> tempo)
-            ofdm_time = np.fft.ifft(qpsk_symbols, self.N_fft)
+            ofdm_time = np.fft.ifft(qam16_symbols, self.N_fft)
             
             # Adiciona prefixo cíclico
             ofdm_with_cp = self.add_cyclic_prefix(ofdm_time)
@@ -285,10 +337,10 @@ class OFDMTransmitter:
             ofdm_time = self.remove_cyclic_prefix(ofdm_with_cp)
             
             # FFT (converte tempo -> frequência)
-            qpsk_symbols = np.fft.fft(ofdm_time, self.N_fft)
+            qam16_symbols = np.fft.fft(ofdm_time, self.N_fft)
             
-            # Demodula QPSK
-            symbol_bits = self.qpsk_demodulate(qpsk_symbols)
+            # Demodula 16-QAM
+            symbol_bits = self.qam16_demodulate(qam16_symbols)
             
             # Concatena bits
             rx_bits = np.concatenate([rx_bits, symbol_bits])
@@ -415,7 +467,7 @@ def main():
     bit_rate = 10e6  # 10 Mbps
     
     # Largura de banda disponível (MHz)
-    bandwidth = 20e6  # 20 MHz
+    bandwidth = 200e6  # 200 MHz
     
     # Atraso máximo do canal (µs)
     max_delay = 200e-9  # 0.2 µs

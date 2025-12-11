@@ -1,90 +1,274 @@
-# Digital Modulation Simulation System
+# Simulador de Modulação Digital e OFDM
 
-A comprehensive Python-based digital communication system simulator for telecommunications courses, featuring multiple modulation schemes, channel models, and complete transmission pipeline.
+Sistema completo de simulação para telecomunicações, implementando múltiplos esquemas de modulação digital e um simulador OFDM configurável para análise de desempenho em canais AWGN.
 
-## 📋 Overview
+## 📋 Visão Geral
 
-This project implements a modular framework for simulating digital communication systems with various modulation techniques, channel impairments, and performance analysis tools. Built with object-oriented design principles, it provides an educational platform for understanding modern telecommunications.
+Este projeto oferece duas abordagens complementares:
 
-## 🏗️ Architecture
+1. **Framework Modular** (`entities/`): Sistema orientado a objetos com transmissores, receptores e canais para simulações educacionais
+2. **Simulador OFDM** (`ofdm_simulation.py`): Simulador independente e configurável para análise BER vs SNR em sistemas OFDM
 
-The system follows a three-layer architecture:
+---
 
-### Base Classes (Abstract)
+## 🎯 Simulador OFDM (`ofdm_simulation.py`)
 
-- **`BaseTransmitter`**: Abstract transmitter with modulation interface, signal normalization, and carrier upconversion
-- **`BaseReceiver`**: Abstract receiver with demodulation interface, AGC, and carrier downconversion  
-- **`BaseChannel`**: Abstract channel for signal transmission and impairment modeling
+### Descrição
 
-### Concrete Implementations
+Simulador completo de sistema OFDM (Orthogonal Frequency-Division Multiplexing) com suporte a:
+- Modulação 16-QAM com Gray coding nas subportadoras
+- Prefixo cíclico configurável para mitigação de ISI
+- Upconversion/downconversion para frequência de portadora (RF)
+- Canal AWGN com SNR configurável
+- Análise de BER vs SNR
+- Visualização gráfica dos resultados
 
-#### Transmitters (`entities/`)
+### Como Funciona
 
-- **`BPSKTransmitter`**: Binary Phase-Shift Keying (1 bit/symbol)
-  - Root Raised Cosine (RRC) pulse shaping
-  - Phase modulation: 0° and 180°
+O simulador implementa um transmissor/receptor OFDM completo seguindo estas etapas:
+
+**Transmissão:**
+1. Gera bits aleatórios
+2. Agrupa em símbolos 16-QAM (4 bits por símbolo)
+3. Aplica IFFT para criar símbolo OFDM no domínio do tempo
+4. Adiciona prefixo cíclico (CP)
+5. Upconverte para frequência de portadora (opcional)
+6. Transmite pelo canal AWGN
+
+**Recepção:**
+7. Downconverte para banda base
+8. Remove prefixo cíclico
+9. Aplica FFT para recuperar símbolos no domínio da frequência
+10. Demodula 16-QAM por mínima distância
+11. Calcula BER comparando com bits transmitidos
+
+### Configuração de Parâmetros
+
+Todas as variáveis de entrada estão centralizadas na função `main()` (linhas 465-530):
+
+```python
+def main():
+    # ============================================================================
+    # CONFIGURAÇÃO DOS PARÂMETROS
+    # ============================================================================
+    
+    # Taxa de bits desejada (Mbps)
+    bit_rate = 10e6  # 10 Mbps ← ALTERE AQUI
+    
+    # Largura de banda disponível (MHz)
+    bandwidth = 200e6  # 200 MHz ← ALTERE AQUI
+    
+    # Atraso máximo do canal (µs)
+    max_delay = 200e-9  # 0.2 µs ← ALTERE AQUI
+    
+    # Tempo de guarda (deve ser > 2×max_delay)
+    guard_time = 2*max_delay  # 0.4 µs ← ALTERE AQUI
+    
+    # Tempo de símbolo como múltiplo do tempo de guarda
+    symbol_time_multiplier = 7  # Ts = 7 × Tg ← ALTERE AQUI
+    
+    # Frequência da portadora
+    carrier_freq = 2.4e9  # 2.4 GHz (WiFi) ← ALTERE AQUI
+    # carrier_freq = None  # Descomente para banda base
+    
+    # Fator de sobreamostragem para portadora
+    oversampling_factor = 8  # ← ALTERE AQUI
+    
+    # Número de símbolos OFDM por frame
+    num_symbols = 12  # ← ALTERE AQUI
+    
+    # Range de SNR para teste (dB)
+    snr_range = np.arange(0, 31, 2)  # 0 a 30 dB, passo de 2 dB ← ALTERE AQUI
+```
+
+### Parâmetros Detalhados
+
+| Parâmetro | Descrição | Impacto | Valores Típicos |
+|-----------|-----------|---------|-----------------|
+| `bit_rate` | Taxa de bits desejada (bps) | Define throughput do sistema | 1 Mbps - 100 Mbps |
+| `bandwidth` | Largura de banda disponível (Hz) | Limita número de subportadoras | 20 MHz - 200 MHz |
+| `max_delay` | Atraso máximo do canal (s) | Determina ISI esperado | 0.1 µs - 1 µs |
+| `guard_time` | Tempo de guarda/CP (s) | Proteção contra ISI (deve ser > 2×max_delay) | 0.2 µs - 2 µs |
+| `symbol_time_multiplier` | Multiplicador Ts = m × Tg | Razão símbolo útil / guarda | 4 - 10 |
+| `carrier_freq` | Freq. da portadora (Hz) | RF ou banda base (`None`) | 2.4 GHz, 5 GHz, `None` |
+| `oversampling_factor` | Sobreamostragem para portadora | Qualidade da modulação RF | 4 - 16 |
+| `num_symbols` | Símbolos OFDM por frame | Tamanho do frame de teste | 10 - 100 |
+| `snr_range` | Valores de SNR para teste (dB) | Pontos da curva BER vs SNR | 0 a 40 dB |
+
+### Como Executar
+
+```bash
+# Execute o simulador
+python ofdm_simulation.py
+```
+
+**Saída esperada:**
+1. Configuração do sistema OFDM (parâmetros calculados)
+2. Simulação BER vs SNR (progresso por SNR)
+3. Métricas de transmissão (throughput, overhead, etc.)
+4. Gráfico salvo em `ofdm_ber_vs_snr.png`
+
+### Estrutura do Código
+
+```
+OFDMTransmitter (classe principal)
+├── __init__()              # Calcula parâmetros do sistema
+├── qam16_modulate()        # Modula bits → símbolos 16-QAM
+├── qam16_demodulate()      # Demodula símbolos → bits
+├── add_cyclic_prefix()     # Adiciona CP
+├── remove_cyclic_prefix()  # Remove CP
+├── upconvert_to_carrier()  # Banda base → RF
+├── downconvert_from_carrier()  # RF → Banda base
+├── transmit_frame()        # Transmite frame completo
+└── receive_frame()         # Recebe frame completo
+
+Funções auxiliares:
+├── awgn_channel()          # Adiciona ruído AWGN
+├── calculate_ber()         # Calcula BER
+├── simulate_ber_vs_snr()   # Loop de simulação
+└── plot_ber_vs_snr()       # Gera gráfico
+```
+
+### Modificando a Modulação
+
+Para alterar o esquema de modulação das subportadoras:
+
+**Trocar 16-QAM para QPSK:**
+```python
+# Na linha 60, altere:
+self.bits_per_symbol = 2  # QPSK (ao invés de 4 para 16-QAM)
+
+# Renomeie/substitua os métodos qam16_modulate e qam16_demodulate
+# por qpsk_modulate e qpsk_demodulate
+```
+
+**Trocar para BPSK:**
+```python
+self.bits_per_symbol = 1  # BPSK
+# Implemente bpsk_modulate e bpsk_demodulate
+```
+
+### Resultados
+
+#### Configuração Testada
+
+- **Taxa de bits**: 10 Mbps (solicitada) → 731.43 Mbps (efetiva)
+- **Largura de banda**: 200 MHz
+- **Subportadoras**: 512 (FFT)
+- **Modulação**: 16-QAM (4 bits/subportadora)
+- **Prefixo cíclico**: 14.3% overhead
+- **Portadora**: 2.4 GHz
+- **Tempo de símbolo**: 2.8 µs (Tu = 2.4 µs, Tg = 0.4 µs)
+
+#### Gráfico BER vs SNR
+
+![Desempenho OFDM em Canal AWGN](ofdm_ber_vs_snr.png)
+
+**Análise:**
+- BER elevado (~42%) devido à sensibilidade do 16-QAM ao ruído
+- 16-QAM oferece **dobro da taxa de dados** comparado a QPSK, mas requer **SNR mais alto**
+- Para BER < 10⁻³, seria necessário SNR > 25 dB com equalização ou codificação de canal
+
+#### Métricas Reportadas
+
+```
+Total de bits transmitidos por frame:  24576
+Duração do frame:                      33.60 µs
+Taxa de transmissão efetiva:           731.43 Mbps
+Overhead do prefixo cíclico:           14.3%
+Eficiência espectral:                  3.66 bps/Hz
+```
+
+### Melhorando o Desempenho
+
+Para reduzir o BER:
+
+1. **Aumentar SNR**: Maior potência de transmissão ou melhor receptor
+2. **Codificação de Canal**: Adicionar FEC (Reed-Solomon, Turbo codes)
+3. **Equalização**: Compensar distorções do canal
+4. **Modulação Adaptativa**: Usar QPSK em baixo SNR, 16-QAM em alto SNR
+5. **Aumentar CP**: Maior proteção contra ISI (mas reduz eficiência)
+6. **Pilotos**: Melhorar estimação de canal
+
+---
+
+## 🏗️ Framework Modular (`entities/`)
+
+### Arquitetura
+
+O sistema segue arquitetura de três camadas:
+
+#### Classes Base (Abstratas)
+
+- **`BaseTransmitter`**: Transmissor abstrato com interface de modulação, normalização e upconversion
+- **`BaseReceiver`**: Receptor abstrato com interface de demodulação, AGC e downconversion  
+- **`BaseChannel`**: Canal abstrato para transmissão e modelagem de imperfeições
+
+#### Implementações Concretas
+
+**Transmissores** (`entities/`)
+
+- **`BPSKTransmitter`**: Binary Phase-Shift Keying (1 bit/símbolo)
+  - Formatação de pulso Root Raised Cosine (RRC)
+  - Modulação de fase: 0° e 180°
   
-- **`QPSKTransmitter`**: Quadrature Phase-Shift Keying (2 bits/symbol)
-  - Four phase states: 45°, 135°, 225°, 315°
-  - Gray coding for optimal BER
+- **`ASK4Transmitter`**: 4-level Amplitude-Shift Keying (2 bits/símbolo)
+  - Quatro níveis de amplitude: -3, -1, +1, +3
+  - Mapeamento Gray-coded
   
-- **`ASK4Transmitter`**: 4-level Amplitude-Shift Keying (2 bits/symbol)
-  - Four amplitude levels: -3, -1, +1, +3
-  - Gray-coded constellation mapping
+- **`QAM16Transmitter`**: 16-Quadrature Amplitude Modulation (4 bits/símbolo)
+  - Constelação 4×4 com modulação I/Q
+  - Gray coding e normalização de potência
   
-- **`QAM16Transmitter`**: 16-Quadrature Amplitude Modulation (4 bits/symbol)
-  - 4×4 constellation with I/Q modulation
-  - Gray coding and power normalization
-  
-- **`OFDMTransmitter`**: Orthogonal Frequency-Division Multiplexing (configurable)
-  - Multiple orthogonal subcarriers (default: 128)
-  - Cyclic prefix for ISI mitigation
-  - Configurable subcarrier modulation (BPSK/QPSK/16-QAM)
-  - IFFT-based efficient modulation
-  - High spectral efficiency (>12k bits/s/Hz)
+- **`OFDMTransmitter`**: Orthogonal Frequency-Division Multiplexing (configurável)
+  - Múltiplas subportadoras ortogonais (padrão: 128)
+  - Prefixo cíclico para mitigação de ISI
+  - Modulação de subportadora configurável (BPSK/QPSK/16-QAM)
+  - Modulação eficiente baseada em IFFT
+  - Alta eficiência espectral (>12k bits/s/Hz)
 
-#### Receivers (`entities/`)
+**Receptores** (`entities/`)
 
-- **`BPSKReceiver`**: BPSK demodulation with zero-threshold decision
-- **`ASK4Receiver`**: 4-ASK demodulation with threshold-based detection
-- **`QAM16Receiver`**: 16-QAM demodulation with hard/soft decision
-- **`OFDMReceiver`**: OFDM demodulation
-  - FFT-based subcarrier recovery
-  - Cyclic prefix removal
-  - Per-subcarrier demodulation
-  - EVM (Error Vector Magnitude) measurement
+- **`BPSKReceiver`**: Demodulação BPSK com decisão de limiar zero
+- **`ASK4Receiver`**: Demodulação 4-ASK com detecção baseada em limiar
+- **`QAM16Receiver`**: Demodulação 16-QAM com decisão hard/soft
+- **`OFDMReceiver`**: Demodulação OFDM
+  - Recuperação de subportadora baseada em FFT
+  - Remoção de prefixo cíclico
+  - Demodulação por subportadora
+  - Medição de EVM (Error Vector Magnitude)
 
-#### Channels (`entities/`)
+**Canais** (`entities/`)
 
 - **`AWGNChannel`**: Additive White Gaussian Noise
-  - Configurable SNR in dB
-  - Theoretical BER calculation for BPSK/QPSK/16-QAM
-  - Complex Gaussian noise generation
+  - SNR configurável em dB
+  - Cálculo teórico de BER para BPSK/QPSK/16-QAM
+  - Geração de ruído Gaussiano complexo
 
-### Integration Layer
+### Camada de Integração
 
-- **`Transmission`**: End-to-end transmission system
-  - Integrates transmitter + channel + receiver
-  - Automatic BER, SNR, throughput calculation
-  - Transmission time and bandwidth metrics
-  - Support for text, bytes, and arbitrary data
+- **`Transmission`**: Sistema de transmissão end-to-end
+  - Integra transmissor + canal + receptor
+  - Cálculo automático de BER, SNR, throughput
+  - Métricas de tempo de transmissão e largura de banda
+  - Suporte para texto, bytes e dados arbitrários
+<!-- 
+## 💻 Uso do Framework
 
-## 💻 Usage
-
-### Basic Example
+### Exemplo Básico
 
 ```python
 from entities import QAM16Transmitter, QAM16Receiver, AWGNChannel, Transmission
 
-# Create components
+# Criar componentes
 transmitter = QAM16Transmitter(sample_rate=1e6, carrier_freq=2.4e9)
 receiver = QAM16Receiver(sample_rate=1e6, carrier_freq=2.4e9)
 channel = AWGNChannel(snr_db=20)
 
-# Integrate into transmission system
+# Integrar no sistema de transmissão
 system = Transmission(transmitter, channel, receiver)
 
-# Transmit text
+# Transmitir texto
 message = "Hello, OFDM!"
 rx_text, metrics = system.transmit_text(message)
 
@@ -93,12 +277,12 @@ print(f"BER: {metrics['ber']:.2e}")
 print(f"Transmission Time: {metrics['transmission_time']*1000:.2f} ms")
 ```
 
-### OFDM Example
+### Exemplo OFDM (Framework)
 
 ```python
 from entities import OFDMTransmitter, OFDMReceiver, AWGNChannel, Transmission
 
-# Create OFDM system with QPSK subcarrier modulation
+# Criar sistema OFDM com modulação QPSK nas subportadoras
 tx = OFDMTransmitter(
     sample_rate=1e6,
     num_subcarriers=128,
@@ -118,155 +302,161 @@ rx = OFDMReceiver(
 channel = AWGNChannel(snr_db=25)
 system = Transmission(tx, channel, rx)
 
-# Transmit audio data
-audio_bytes = generate_audio()  # Your audio data
+# Transmitir dados de áudio
+audio_bytes = generate_audio()  # Seus dados de áudio
 rx_audio, metrics = system.transmit_bytes(audio_bytes)
 
 print(f"Bit Rate: {tx.get_bit_rate()/1e6:.2f} Mbps")
 print(f"Spectral Efficiency: {tx.get_spectral_efficiency():.2f} bits/s/Hz")
-```
+``` -->
+<!-- 
+## 🧪 Testes Disponíveis
 
-## 🧪 Test Suite
+### Testes Single-Carrier
 
-The project includes comprehensive test scripts demonstrating various transmission scenarios:
-
-### Single-Carrier Tests
-
-- **`test_qam16_transmission.py`**: Text transmission with 16-QAM
-  - 10,000 character text transmission
-  - BER vs SNR curve analysis (0-25 dB)
-  - Constellation diagram visualization
-  - Carrier frequency: 450 MHz
+- **`test_qam16_transmission.py`**: Transmissão de texto com 16-QAM
+  - 10.000 caracteres
+  - Análise de curva BER vs SNR (0-25 dB)
+  - Visualização de diagrama de constelação
+  - Frequência de portadora: 450 MHz
   
-- **`test_ask4_long_transmission.py`**: Long-distance 4-ASK transmission
-  - 10k characters in <2 seconds
-  - Eye diagram and temporal dispersion analysis
-  - Histogram of received symbols
+- **`test_ask4_long_transmission.py`**: Transmissão 4-ASK de longa distância
+  - 10k caracteres em <2 segundos
+  - Análise de diagrama de olho e dispersão temporal
+  - Histograma de símbolos recebidos
 
-- **`test_qam16_image_transmission.py`**: RGB image transmission
-  - 100×100 pixel RGB image
-  - Transmission time: <3 seconds
-  - PSNR (Peak Signal-to-Noise Ratio) measurement
-  - Before/after comparison visualization
+- **`test_qam16_image_transmission.py`**: Transmissão de imagem RGB
+  - Imagem RGB de 100×100 pixels
+  - Tempo de transmissão: <3 segundos
+  - Medição de PSNR (Peak Signal-to-Noise Ratio)
+  - Visualização de comparação antes/depois
 
-- **`test_qam16_video_transmission.py`**: Video transmission
-  - 10 grayscale frames (100×100 pixels)
-  - Transmission time: <1 second
-  - Per-frame PSNR analysis
-  - Animated sequence reconstruction
+- **`test_qam16_video_transmission.py`**: Transmissão de vídeo
+  - 10 quadros em escala de cinza (100×100 pixels)
+  - Tempo de transmissão: <1 segundo
+  - Análise de PSNR por quadro
+  - Reconstrução de sequência animada
 
-### Multi-Carrier Tests
+### Testes Multi-Carrier
 
-- **`test_ofdm_audio_transmission.py`**: OFDM audio transmission
-  - 5 seconds of audio @ 16 kHz, 16 bits/sample, mono
-  - 160,000 bytes (1.28 Mbits) transmitted in 813 ms
-  - Transmission rate: 1.575 Mbps
-  - Comprehensive visualization suite:
-    - Waveform comparison (original vs received)
-    - Frequency spectrum analysis
-    - Error signal distribution
-    - OFDM constellation diagram
-    - BER over time
-    - THD (Total Harmonic Distortion) measurement
-    - EVM RMS analysis
+- **`test_ofdm_audio_transmission.py`**: Transmissão de áudio OFDM
+  - 5 segundos de áudio @ 16 kHz, 16 bits/amostra, mono
+  - 160.000 bytes (1,28 Mbits) transmitidos em 813 ms
+  - Taxa de transmissão: 1,575 Mbps
+  - Conjunto abrangente de visualizações:
+    - Comparação de forma de onda (original vs recebido)
+    - Análise de espectro de frequência
+    - Distribuição de sinal de erro
+    - Diagrama de constelação OFDM
+    - BER ao longo do tempo
+    - Medição de THD (Total Harmonic Distortion)
+    - Análise de EVM RMS -->
 
-## 📊 Performance Metrics
+## 📊 Métricas de Desempenho
 
-All transmission systems automatically calculate:
+Todos os sistemas de transmissão calculam automaticamente:
 
-- **BER** (Bit Error Rate): Ratio of bit errors to total bits
-- **SER** (Symbol Error Rate): Ratio of symbol errors to total symbols
-- **SNR** (Signal-to-Noise Ratio): In dB
-- **Throughput**: Effective data rate in bps
-- **Transmission Time**: Actual signal duration in seconds
-- **Bandwidth Used**: Occupied spectrum in Hz
-- **PSNR** (for images/video): Image quality metric in dB
-- **EVM RMS** (for OFDM): Constellation error magnitude in %
-- **THD** (for audio): Total harmonic distortion in %
+- **BER** (Bit Error Rate): Razão de erros de bit para bits totais
+- **SER** (Symbol Error Rate): Razão de erros de símbolo para símbolos totais
+- **SNR** (Signal-to-Noise Ratio): Em dB
+- **Throughput**: Taxa de dados efetiva em bps
+- **Transmission Time**: Duração real do sinal em segundos
+- **Bandwidth Used**: Espectro ocupado em Hz
+- **PSNR** (para imagens/vídeo): Métrica de qualidade de imagem em dB
+- **EVM RMS** (para OFDM): Magnitude de erro de constelação em %
+- **THD** (para áudio): Distorção harmônica total em %
 
-## 🔧 Dependencies
+## 🔧 Dependências
 
 ```python
-numpy          # Signal processing and numerical operations
-matplotlib     # Visualization and plotting
-Pillow (PIL)   # Image processing for transmission tests
+numpy          # Processamento de sinal e operações numéricas
+matplotlib     # Visualização e plotagem
+Pillow (PIL)   # Processamento de imagem para testes de transmissão
+scipy          # Processamento de sinal (usado em ofdm_simulation.py)
 ```
 
-Install with:
+Instalar com:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-## 📁 Project Structure
+## 📁 Estrutura do Projeto
 
 ```text
 radio-frequency/
 ├── entities/
 │   ├── __init__.py
-│   ├── base_transmitter.py      # Abstract transmitter
-│   ├── base_receiver.py         # Abstract receiver
-│   ├── base_channel.py          # Abstract channel
-│   ├── bpsk_transmitter.py      # BPSK implementation
+│   ├── base_transmitter.py      # Transmissor abstrato
+│   ├── base_receiver.py         # Receptor abstrato
+│   ├── base_channel.py          # Canal abstrato
+│   ├── bpsk_transmitter.py      # Implementação BPSK
 │   ├── bpsk_receiver.py
-│   ├── ask4_transmitter.py      # 4-ASK implementation
+│   ├── ask4_transmitter.py      # Implementação 4-ASK
 │   ├── ask4_receiver.py
-│   ├── qam16_transmitter.py     # 16-QAM implementation
+│   ├── qam16_transmitter.py     # Implementação 16-QAM
 │   ├── qam16_receiver.py
-│   ├── ofdm_transmitter.py      # OFDM implementation
+│   ├── ofdm_transmitter.py      # Implementação OFDM
 │   ├── ofdm_receiver.py
-│   ├── awgn_channel.py          # AWGN channel model
-│   └── transmission.py          # Integration layer
+│   ├── awgn_channel.py          # Modelo de canal AWGN
+│   └── transmission.py          # Camada de integração
+├── ofdm_simulation.py           # Simulador OFDM standalone
 ├── test_qam16_transmission.py
 ├── test_ask4_long_transmission.py
 ├── test_qam16_image_transmission.py
 ├── test_qam16_video_transmission.py
 ├── test_ofdm_audio_transmission.py
+├── ofdm_ber_vs_snr.png         # Gráfico de resultados OFDM
 ├── requirements.txt
 └── README.md
 ```
 
-## 🎓 Educational Applications
+## 🎓 Aplicações Educacionais
 
-This simulator is ideal for:
+Este simulador é ideal para:
 
-- Understanding digital modulation theory
-- Analyzing BER performance under noise
-- Comparing single-carrier vs multi-carrier systems
-- Visualizing constellation diagrams and eye patterns
-- Studying ISI mitigation with pulse shaping
-- Exploring OFDM principles and cyclic prefix
-- Measuring spectral efficiency trade-offs
-- Real-world data transmission scenarios (text, images, audio, video)
+- Compreender teoria de modulação digital
+- Analisar desempenho de BER sob ruído
+- Comparar sistemas single-carrier vs multi-carrier
+- Visualizar diagramas de constelação e padrões de olho
+- Estudar mitigação de ISI com formatação de pulso
+- Explorar princípios de OFDM e prefixo cíclico
+- Medir trade-offs de eficiência espectral
+- Cenários de transmissão de dados do mundo real (texto, imagens, áudio, vídeo)
 
-## 🚀 Running Tests
+## 🚀 Executando Testes
 
-Execute individual test scripts:
+Execute scripts de teste individuais:
 
 ```bash
+# Testes do framework
 python test_qam16_transmission.py
 python test_ofdm_audio_transmission.py
+
+# Simulador OFDM
+python ofdm_simulation.py
 ```
 
-Each test generates comprehensive visualizations and performance metrics.
+Cada teste gera visualizações abrangentes e métricas de desempenho.
 
-## 📈 Features
+## 📈 Recursos
 
-✅ Multiple modulation schemes (BPSK, 4-ASK, 16-QAM, OFDM)  
-✅ Gray coding for optimal BER performance  
-✅ RRC pulse shaping for ISI reduction  
+✅ Múltiplos esquemas de modulação (BPSK, 4-ASK, 16-QAM, OFDM)  
+✅ Gray coding para desempenho ideal de BER  
+✅ Formatação de pulso RRC para redução de ISI  
 ✅ Automatic Gain Control (AGC)  
-✅ Carrier frequency upconversion/downconversion  
-✅ AWGN channel with configurable SNR  
-✅ Comprehensive metrics (BER, SNR, PSNR, EVM, THD)  
-✅ Real-world transmission tests (text, images, audio, video)  
-✅ Rich visualization suite (constellations, spectra, eye diagrams)  
-✅ OFDM with cyclic prefix and FFT/IFFT processing  
+✅ Upconversion/downconversion de frequência de portadora  
+✅ Canal AWGN com SNR configurável  
+✅ Métricas abrangentes (BER, SNR, PSNR, EVM, THD)  
+✅ Testes de transmissão do mundo real (texto, imagens, áudio, vídeo)  
+✅ Conjunto rico de visualizações (constelações, espectros, diagramas de olho)  
+✅ OFDM com prefixo cíclico e processamento FFT/IFFT  
+✅ Simulador OFDM standalone com análise BER vs SNR  
 
-## 📝 License
+## 📝 Licença
 
-See `LICENSE` file for details.
+Consulte o arquivo `LICENSE` para detalhes.
 
-## 👥 Contributors
+## 👥 Contribuidores
 
-Developed for IFES Telecommunications Electronics course.
+Desenvolvido para o curso de Eletrônica para Telecomunicações do IFES.
