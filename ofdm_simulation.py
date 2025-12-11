@@ -436,7 +436,7 @@ def plot_ber_vs_snr(snr_values: np.ndarray, ber_values: np.ndarray):
     plt.figure(figsize=(12, 7))
     
     # Gráfico em escala logarítmica
-    plt.semilogy(snr_values, ber_values, 'b-o', linewidth=2, markersize=8, label='OFDM QPSK')
+    plt.semilogy(snr_values, ber_values, 'b-o', linewidth=2, markersize=8, label='OFDM 16-QAM')
     
     plt.grid(True, which='both', alpha=0.3)
     plt.xlabel('SNR (dB)', fontsize=12, fontweight='bold')
